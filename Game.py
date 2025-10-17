@@ -1,4 +1,5 @@
 import pygame
+from Obstacles import Obstacles
 WIDTH = 1024
 HEIGHT = 1024
 FPS = 60
@@ -7,10 +8,12 @@ class Game:
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        pygame.display.set_caption("Zombie Survival Prototype")
+        pygame.display.set_caption("Zombie Survival")
         self.clock = pygame.time.Clock()
         self.running = True
 
+        #World
+        self.obstacles=Obstacles.generateObstacles
     def run(self):
         while self.running:
             dt = self.clock.tick(FPS) / 1000.0
