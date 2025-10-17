@@ -13,7 +13,9 @@ class Game:
         self.running = True
 
         #World
-        self.obstacles=Obstacles.generateObstacles
+        self.obstacles = Obstacles.generateObstacles()
+        self.gameObjects = self.obstacles  # add here rest of the objects
+    
     def run(self):
         while self.running:
             dt = self.clock.tick(FPS) / 1000.0
@@ -26,10 +28,25 @@ class Game:
             self.draw()
         pygame.quit()
     
-    # =============== TODO =============
     def update(self, dt: float):
-        print(123) 
+        for obj in self.gameObjects:
+            if hasattr(obj, "update"):
+                obj.update(dt)
+        self.resolveAllCollisions(self.gameObjects)
+ 
 
-    # =============== TODO =============
     def draw(self):
-        print(123)
+        self.screen.fill((20, 20, 20))
+        for obj in self.gameObjects:
+            if hasattr(obj, "draw"):
+                obj.draw(self.screen)
+        pygame.display.flip()
+
+
+    def resolveAllCollisions(self, gameObjects):
+        for i in range(len(gameObjects)):
+            for j in range(i + 1, len(gameObjects)):
+                c1 = gameObjects[i].collider
+                c2 = gameObjects[j].collider
+                if c1.overlaps(c2):
+                    c1.resolve_overlap(c2)
