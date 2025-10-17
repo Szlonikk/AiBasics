@@ -20,7 +20,6 @@ class Player:
         self.angle = math.degrees(math.atan2(dy, dx))
 
     def draw(self, surface: pygame.Surface):
-        # obliczamy wierzchołki trójkąta opisanego na okręgu collidera
         cx, cy = self.collider.pos
         r = self.collider.radius
 
