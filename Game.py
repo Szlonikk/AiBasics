@@ -49,4 +49,4 @@ class Game:
                 c1 = gameObjects[i].collider
                 c2 = gameObjects[j].collider
                 if c1.overlaps(c2):
-                    c1.resolve_overlap(c2)
+                    c1.resolveOverlap(c2)
