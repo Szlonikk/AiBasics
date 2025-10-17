@@ -10,16 +10,15 @@ class Player:
         self.collider=Collider(START_POS_X, START_POS_Y, PLAYER_RADIUS)
         self.angle = -90
     
-    def _update(self, dt: float, mouse_pos):
-        dx = mouse_pos[0] - self.collider.pos[0]
-        dy = mouse_pos[1] - self.collider.pos[1]
+    def update(self, dt: float):
+        self.rotatePlayer(pygame.mouse.get_pos())
+        
+        
+    def rotatePlayer(self, mousePos):
+        dx = mousePos[0] - self.collider.pos[0]
+        dy = mousePos[1] - self.collider.pos[1]
         self.angle = math.degrees(math.atan2(dy, dx))
 
-    def update(self, dt: float):
-        self._update(dt,pygame.mouse.get_pos())
-
-
-    
     def draw(self, surface: pygame.Surface):
         # obliczamy wierzchołki trójkąta opisanego na okręgu collidera
         cx, cy = self.collider.pos
