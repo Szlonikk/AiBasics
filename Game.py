@@ -1,5 +1,6 @@
 import pygame
 from Obstacles import Obstacles
+from Player import Player
 WIDTH = 1024
 HEIGHT = 1024
 FPS = 60
@@ -14,7 +15,8 @@ class Game:
 
         #World
         self.obstacles = Obstacles.generateObstacles()
-        self.gameObjects = self.obstacles  # add here rest of the objects
+        self.player = Player()
+        self.gameObjects = [*self.obstacles, self.player]  # add here rest of the objects
     
     def run(self):
         while self.running:
