@@ -4,7 +4,7 @@ import math
 START_POS_X=50
 START_POS_Y=900
 PLAYER_RADIUS=30
-
+PLAYER_SPEED=150
 class Player:
     def __init__(self):
         self.collider=Collider(START_POS_X, START_POS_Y, PLAYER_RADIUS)
@@ -12,12 +12,29 @@ class Player:
     
     def update(self, dt: float):
         self.rotatePlayer(pygame.mouse.get_pos())
-        
+        self.move(dt)
         
     def rotatePlayer(self, mousePos):
         dx = mousePos[0] - self.collider.pos[0]
         dy = mousePos[1] - self.collider.pos[1]
         self.angle = math.degrees(math.atan2(dy, dx))
+
+    
+    def move(self, dt: float):
+        keys = pygame.key.get_pressed()
+        direction = pygame.math.Vector2(0, 0)
+        if keys[pygame.K_w]:
+            direction.y -= 1
+        if keys[pygame.K_s]:
+            direction.y += 1
+        if keys[pygame.K_a]:
+            direction.x -= 1
+        if keys[pygame.K_d]:
+            direction.x += 1
+        if direction.length_squared() > 0:
+            direction = direction.normalize()
+        self.collider.pos += direction * PLAYER_SPEED * dt
+
 
     def draw(self, surface: pygame.Surface):
         cx, cy = self.collider.pos

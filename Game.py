@@ -1,9 +1,8 @@
 import pygame
 from Obstacles import Obstacles
 from Player import Player
-WIDTH = 1024
-HEIGHT = 1024
-FPS = 60
+from Settings import WIDTH, HEIGHT, FPS 
+
 
 class Game:
     def __init__(self):
@@ -51,4 +50,14 @@ class Game:
                 c1 = gameObjects[i].collider
                 c2 = gameObjects[j].collider
                 if c1.overlaps(c2):
-                    c1.resolveOverlap(c2)
+                    if isinstance(gameObjects[i], Obstacles):
+                        c2.resolveOverlap(c1, static=True)
+
+                    elif isinstance(gameObjects[j], Obstacles):
+                        c1.resolveOverlap(c2, static=True)
+
+                    else:
+                        c1.resolveOverlap(c2, static=False)
+        for obj in gameObjects:
+            if not isinstance(obj, Obstacles):
+                obj.collider.keepInsideScreen()
