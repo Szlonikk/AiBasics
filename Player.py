@@ -22,12 +22,16 @@ class Player:
     def draw(self, surface: pygame.Surface):
         cx, cy = self.collider.pos
         r = self.collider.radius
-
         a = math.radians(self.angle)
-        points = []
-        for i in range(3):
-            angle_i = a + i * (2 * math.pi / 3)
-            x = cx + math.cos(angle_i) * r
-            y = cy + math.sin(angle_i) * r
-            points.append((x, y))
+        direction = pygame.math.Vector2(math.cos(a), math.sin(a))
+        front = direction * r
+        left = direction.rotate(140) * (r * 0.6)
+        right = direction.rotate(-140) * (r * 0.6)
+
+        points = [
+            (cx + front.x, cy + front.y),
+            (cx + left.x, cy + left.y),
+            (cx + right.x, cy + right.y),
+        ]
+
         pygame.draw.polygon(surface, (50, 50, 200), points)
