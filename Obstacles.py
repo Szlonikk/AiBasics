@@ -1,6 +1,7 @@
 from typing import List
 from Collider import Collider
 import pygame
+from Settings import COLOR_OBSTACLES
 class Obstacles:
 
     def __init__(self, x: float, y: float, radius: float):
@@ -10,7 +11,7 @@ class Obstacles:
         print("update obstacle:", dt)
 
     def draw(self,surface: pygame.Surface):
-        pygame.draw.circle(surface, (200, 50, 50), self.collider.pos, self.collider.radius)
+        pygame.draw.circle(surface, COLOR_OBSTACLES, self.collider.pos, self.collider.radius)
 
 
     @staticmethod

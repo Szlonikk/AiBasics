@@ -1,13 +1,11 @@
 import pygame
 from Collider import Collider
 import math
-START_POS_X=50
-START_POS_Y=900
-PLAYER_RADIUS=30
-PLAYER_SPEED=150
+from Settings import PLAYER_START_POS_X, PLAYER_START_POS_Y, PLAYER_RADIUS, PLAYER_SPEED, COLOR_PLAYER
+
 class Player:
     def __init__(self):
-        self.collider=Collider(START_POS_X, START_POS_Y, PLAYER_RADIUS)
+        self.collider=Collider(PLAYER_START_POS_X, PLAYER_START_POS_Y, PLAYER_RADIUS)
         self.angle = -90
     
     def update(self, dt: float):
@@ -51,4 +49,4 @@ class Player:
             (cx + right.x, cy + right.y),
         ]
 
-        pygame.draw.polygon(surface, (50, 50, 200), points)
+        pygame.draw.polygon(surface, COLOR_PLAYER, points)
