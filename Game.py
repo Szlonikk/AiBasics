@@ -2,7 +2,7 @@ import pygame
 from Obstacles import Obstacles
 from Player import Player
 from Settings import WIDTH, HEIGHT, FPS 
-
+from Zombies import Zombies
 
 class Game:
     def __init__(self):
@@ -14,8 +14,9 @@ class Game:
 
         #World
         self.obstacles = Obstacles.generateObstacles()
+        self.zombies=Zombies.generateZombies()
         self.player = Player()
-        self.gameObjects = [*self.obstacles, self.player]  # add here rest of the objects
+        self.gameObjects = [*self.obstacles, self.player,*self.zombies]  # add here rest of the objects
     
     def run(self):
         while self.running:
