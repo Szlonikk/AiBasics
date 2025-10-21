@@ -1,10 +1,17 @@
 import pygame
 from Obstacles import Obstacles
 from Player import Player
-from Settings import WIDTH, HEIGHT, FPS 
-from Zombies import Zombies
+from Settings import WIDTH, HEIGHT, FPS, ZOMBIE_RADIUS
+from Zombie import Zombie
 
 class Game:
+
+    zombies = []
+    fixed_positions = [
+        (50, 50),
+        (200, 200)
+    ]
+
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -14,9 +21,12 @@ class Game:
 
         #World
         self.obstacles = Obstacles.generateObstacles()
-        self.zombies=Zombies.generateZombies()
         self.player = Player()
-        self.gameObjects = [*self.obstacles, self.player,*self.zombies]  # add here rest of the objects
+
+        for position in self.fixed_positions:
+            self.zombies.append(Zombie(position[0], position[1], ZOMBIE_RADIUS))
+
+        self.gameObjects = [*self.obstacles, self.player, *self.zombies]  # add here rest of the objects
     
     def run(self):
         while self.running:
@@ -33,7 +43,10 @@ class Game:
     def update(self, dt: float):
         for obj in self.gameObjects:
             if hasattr(obj, "update"):
-                obj.update(dt)
+                if isinstance(obj, Zombie):
+                    obj.update(dt, self.player.collider, self.gameObjects)
+                else:
+                    obj.update(dt)
         self.resolveAllCollisions(self.gameObjects)
  
 
