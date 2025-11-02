@@ -1,14 +1,15 @@
 from typing import List
 from Collider import Collider
 import pygame
-from Settings import COLOR_OBSTACLES
+from Settings import COLOR_OBSTACLES, DEBUG_MODE
 class Obstacles:
 
     def __init__(self, x: float, y: float, radius: float):
         self.collider = Collider(x, y, radius)
 
     def update(self, dt: float):
-        print("update obstacle:", dt)
+        if(DEBUG_MODE):
+            print("update obstacle:", dt)
 
     def draw(self,surface: pygame.Surface):
         pygame.draw.circle(surface, COLOR_OBSTACLES, self.collider.pos, self.collider.radius)

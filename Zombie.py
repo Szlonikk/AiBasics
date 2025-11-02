@@ -1,6 +1,6 @@
 from Collider import Collider
 from typing import List
-from Settings import ZOMBIE_RADIUS, COLOR_ZOMBIE, COLOR_ZOMBIE_GROUPING
+from Settings import ZOMBIE_RADIUS, COLOR_ZOMBIE, COLOR_ZOMBIE_GROUPING, DEBUG_MODE
 import pygame
  
 
@@ -12,7 +12,8 @@ class Zombie:
         
 
     def update(self, dt: float, playerCollider: Collider, allEntities: List):
-        print("Zombie update")
+        if(DEBUG_MODE):
+            print("Zombie update")
         self.detectedPlayerPosition = playerCollider
         
         # Check for other zombies within 50 pixel radius
@@ -22,9 +23,9 @@ class Zombie:
                 distance = self.collider.pos.distance_to(entity.collider.pos)
                 if distance <= 50:
                     nearbyZombies.append(entity)
-        
-        print(f"Found {len(nearbyZombies)} zombies within 50 pixels")
-        print(f"Player's location: {self.detectedPlayerPosition.pos.x}, {self.detectedPlayerPosition.pos.y}")
+        if(DEBUG_MODE):
+            print(f"Found {len(nearbyZombies)} zombies within 50 pixels")
+            print(f"Player's location: {self.detectedPlayerPosition.pos.x}, {self.detectedPlayerPosition.pos.y}")
         return nearbyZombies
 
 

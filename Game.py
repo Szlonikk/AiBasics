@@ -3,6 +3,7 @@ from Obstacles import Obstacles
 from Player import Player
 from Settings import WIDTH, HEIGHT, FPS, ZOMBIE_RADIUS
 from Zombie import Zombie
+from ShooterManager import ShooterManager
 
 class Game:
 
@@ -27,11 +28,16 @@ class Game:
             self.zombies.append(Zombie(position[0], position[1], ZOMBIE_RADIUS))
 
         self.gameObjects = [*self.obstacles, self.player, *self.zombies]  # add here rest of the objects
+
+        self.shooterManager = ShooterManager(self.obstacles, self.zombies, self.player)
     
     def run(self):
         while self.running:
             dt = self.clock.tick(FPS) / 1000.0
             for e in pygame.event.get():
+                if e.type == pygame.USEREVENT:
+                    print('end')
+                    self.shooterManager.draw_ray = False
                 if e.type == pygame.QUIT:
                     self.running = False
                 if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
@@ -41,6 +47,7 @@ class Game:
         pygame.quit()
     
     def update(self, dt: float):
+        self.shooterManager.update(dt)
         for obj in self.gameObjects:
             if hasattr(obj, "update"):
                 if isinstance(obj, Zombie):
@@ -51,6 +58,8 @@ class Game:
  
 
     def draw(self):
+        if(self.shooterManager.draw_ray == True):
+            self.shooterManager.draw(self.screen, 15.0)
         self.screen.fill((20, 20, 20))
         for obj in self.gameObjects:
             if hasattr(obj, "draw"):
