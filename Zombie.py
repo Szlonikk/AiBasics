@@ -115,7 +115,7 @@ class Zombie:
         # mapujemy dystans -> wymagany rozmiar grupy
         # blisko = mała grupa; daleko = duża grupa
         # min=2, max=ZOMBIE_GROUP_MIN * 2 (np. 16)
-        min_group = 2
+        min_group = 1
         max_group = ZOMBIE_GROUP_MIN * 2  
         max_dist = 800.0  # przy >800 traktujemy jak max dystans
 
@@ -158,7 +158,6 @@ class Zombie:
         force = Vec2()
 
         if self.state == ZState.HIDE_WANDER:
-            # compose forces: hide, wander, separation, obstacle/wall avoid
             hide_force = self._hide_from(player_pos, obstacles) * ZOMBIE_HIDE_WEIGHT
             # wander
             forward = self.vel if self.vel.length_squared() > 0 else Vec2(1, 0)
@@ -172,10 +171,9 @@ class Zombie:
 
             force = hide_force + wander_force + sep_force + obs_force + wall_force
             force = self._steer(self.vel + force)
-
-            # ↑ Skłonność do ryzyka — częstsze wyjścia zza przeszkód
+         
             # Szansa zależna od prędkości i trochę od chaosu AI (losowość)
-            peek_chance = 0.10 + (self.vel.length() / ZOMBIE_MAX_SPEED) * 0.05  # baza 3%, rośnie gdy zombie już się rusza
+            peek_chance = 0.80 + (self.vel.length() / ZOMBIE_MAX_SPEED) * 0.05  # baza 3%, rośnie gdy zombie już się rusza
 
             if random.random() < peek_chance:
                 # czasem zmniejszamy motywację do chowania

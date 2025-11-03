@@ -89,7 +89,6 @@ def wall_avoidance(me: Collider, velocity: Vec2) -> Vec2:
     return nudge * velocity.length()
 
 def line_intersects_circle(a: Vec2, b: Vec2, circle_center: Vec2, circle_radius: float) -> bool:
-    # segment AB vs circle (center, radius)
     ab = b - a
     ac = circle_center - a
     t = 0.0
@@ -98,3 +97,34 @@ def line_intersects_circle(a: Vec2, b: Vec2, circle_center: Vec2, circle_radius:
         t = max(0.0, min(1.0, ac.dot(ab) / denom))
     closest = a + ab * t
     return closest.distance_to(circle_center) <= circle_radius
+
+def ray_circle_hit_point(ray_start, ray_end, circle_center, radius):
+    # Ray parametric form: P = A + t*(B-A)
+    # Solve intersection with circle
+    d = ray_end - ray_start
+    f = ray_start - circle_center
+
+    a = d.dot(d)
+    b = 2 * f.dot(d)
+    c = f.dot(f) - radius*radius
+
+    disc = b*b - 4*a*c
+    if disc < 0:
+        return None  # no hit
+
+    disc = disc**0.5
+    t1 = (-b - disc) / (2*a)
+    t2 = (-b + disc) / (2*a)
+
+    # We want the first hit along the ray in [0,1]
+    ts = []
+    if 0 <= t1 <= 1:
+        ts.append(t1)
+    if 0 <= t2 <= 1:
+        ts.append(t2)
+
+    if not ts:
+        return None
+
+    t = min(ts)
+    return ray_start + d * t

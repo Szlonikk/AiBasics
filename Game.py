@@ -8,7 +8,7 @@ from Settings import (
     ZOMBIE_RADIUS, ZOMBIE_COUNT, COLOR_BG
 )
 from Zombie import Zombie
-from Steering import line_intersects_circle
+from Steering import line_intersects_circle, ray_circle_hit_point
 
 class Game:
     def __init__(self):
@@ -35,7 +35,6 @@ class Game:
             x = random.randint(60, WIDTH - 60)
             y = random.randint(60, HEIGHT - 60)
             c = Zombie(x, y, ZOMBIE_RADIUS)
-            # avoid spawning overlapping obstacles or player
             ok = True
             for o in self.obstacles:
                 if c.collider.overlaps(o.collider):
@@ -48,6 +47,34 @@ class Game:
         if len(zombies) < count:
             print(f"Spawned only {len(zombies)} zombies after {tries} tries.")
         return zombies
+
+    def ray_circle_hit_point(ray_start, ray_end, circle_center, radius):
+        d = ray_end - ray_start
+        f = ray_start - circle_center
+
+        a = d.dot(d)
+        b = 2 * f.dot(d)
+        c = f.dot(f) - radius*radius
+
+        disc = b*b - 4*a*c
+        if disc < 0:
+            return None  
+        disc = disc**0.5
+        t1 = (-b - disc) / (2*a)
+        t2 = (-b + disc) / (2*a)
+
+        ts = []
+        if 0 <= t1 <= 1:
+            ts.append(t1)
+        if 0 <= t2 <= 1:
+            ts.append(t2)
+
+        if not ts:
+            return None
+
+        t = min(ts)
+        return ray_start + d * t
+
 
     def run(self):
         while self.running:
@@ -62,7 +89,6 @@ class Game:
         pygame.quit()
 
     def update(self, dt: float):
-        # Update dynamic entities
         for obj in self.gameObjects:
             if hasattr(obj, "update"):
                 if isinstance(obj, Zombie):
@@ -70,19 +96,41 @@ class Game:
                 else:
                     obj.update(dt)
 
-        # Player beam hit detection (if a shot happened this frame)
         if self.player.last_shot_segment:
             a, b = self.player.last_shot_segment
-            alive = []
+            hit_dist = float('inf')
+            hit_obj = None
+            hit_point = None
+
+            # check zombies
             for z in self.zombies:
-                if line_intersects_circle(a, b, z.collider.pos, z.collider.radius):
-                    # instant kill
-                    continue
-                alive.append(z)
-            if len(alive) != len(self.zombies):
-                # refresh object list after removals
-                self.zombies = alive
-                self.gameObjects = [*self.obstacles, self.player, *self.zombies]
+                p = ray_circle_hit_point(a, b, z.collider.pos, z.collider.radius)
+                if p is not None:
+                    d = a.distance_to(p)
+                    if d < hit_dist:
+                        hit_dist = d
+                        hit_obj = z
+                        hit_point = p
+
+            # check obstacles
+            for o in self.obstacles:
+                p = ray_circle_hit_point(a, b, o.collider.pos, o.collider.radius)
+                if p is not None:
+                    d = a.distance_to(p)
+                    if d < hit_dist:
+                        hit_dist = d
+                        hit_obj = o
+                        hit_point = p
+
+            if hit_obj:
+                # shorten beam exactly to hit edge
+                self.player.last_shot_segment = (a, hit_point)
+
+                # kill zombie if hit
+                if isinstance(hit_obj, Zombie):
+                    self.zombies.remove(hit_obj)
+                    self.gameObjects.remove(hit_obj)
+
 
         # Resolve interpenetrations (basic)
         self.resolveAllCollisions(self.gameObjects)
