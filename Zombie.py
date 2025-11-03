@@ -44,7 +44,6 @@ class Zombie:
     def color(self):
         if self.state == ZState.ATTACK:
             return COLOR_ZOMBIE_ATTACK
-        # briefly tint to grouping color while forming
         if self._group_lock_timer > 0:
             return COLOR_ZOMBIE_GROUPING
         return COLOR_ZOMBIE_IDLE
