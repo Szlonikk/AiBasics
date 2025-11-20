@@ -5,7 +5,8 @@ from Settings import WIDTH, HEIGHT
 class Collider:
     def __init__(self, x: float, y: float, radius: float):
         self.pos = pygame.math.Vector2(x, y)
-        self.radius = float(radius)
+        self.radius = radius
+        self.tagged = False
 
     def move(self, offset: pygame.math.Vector2):
         self.pos += offset

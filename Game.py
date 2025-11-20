@@ -48,34 +48,6 @@ class Game:
             print(f"Spawned only {len(zombies)} zombies after {tries} tries.")
         return zombies
 
-    def ray_circle_hit_point(ray_start, ray_end, circle_center, radius):
-        d = ray_end - ray_start
-        f = ray_start - circle_center
-
-        a = d.dot(d)
-        b = 2 * f.dot(d)
-        c = f.dot(f) - radius*radius
-
-        disc = b*b - 4*a*c
-        if disc < 0:
-            return None  
-        disc = disc**0.5
-        t1 = (-b - disc) / (2*a)
-        t2 = (-b + disc) / (2*a)
-
-        ts = []
-        if 0 <= t1 <= 1:
-            ts.append(t1)
-        if 0 <= t2 <= 1:
-            ts.append(t2)
-
-        if not ts:
-            return None
-
-        t = min(ts)
-        return ray_start + d * t
-
-
     def run(self):
         while self.running:
             dt = self.clock.tick(FPS) / 1000.0
@@ -92,7 +64,8 @@ class Game:
         for obj in self.gameObjects:
             if hasattr(obj, "update"):
                 if isinstance(obj, Zombie):
-                    obj.update(dt, self.player.collider, self.gameObjects)
+                    obj.update_behavior(self.player)
+                    obj.update(dt, self.player, self.gameObjects)
                 else:
                     obj.update(dt)
 

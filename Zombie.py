@@ -1,17 +1,18 @@
-
 from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum, auto
+import math
 from typing import List, Optional, Tuple
 import pygame
 import random
 from Collider import Collider
+from Player import Player
 from Steering import (
-    Vec2, seek, flee, separation, wander,
-    obstacle_avoidance, wall_avoidance
+    Vec2, seek, separation, wander,
+    obstacle_avoidance, wall_avoidance, alignment, cohesion, pursuit, hide
 )
 from Settings import (
-    ZOMBIE_RADIUS, ZOMBIE_MAX_SPEED, ZOMBIE_MAX_FORCE,
+    ZOMBIE_RADIUS, ZOMBIE_MAX_SPEED, ZOMBIE_MAX_FORCE, ZOMBIE_THREAT_RADIUS,
     ZOMBIE_WANDER_WEIGHT, ZOMBIE_SEPARATION_WEIGHT,
     ZOMBIE_OBS_AVOID_WEIGHT, ZOMBIE_WALL_AVOID_WEIGHT,
     ZOMBIE_HIDE_WEIGHT, ZOMBIE_SEEK_WEIGHT,
@@ -20,8 +21,9 @@ from Settings import (
 )
 
 class ZState(Enum):
-    HIDE_WANDER = auto()
-    ATTACK = auto()
+    WANDER = auto()
+    PURSUE = auto()
+    HIDE = auto()
 
 @dataclass
 class AttackGroup:
@@ -35,18 +37,34 @@ class Zombie:
     def __init__(self, x: float, y: float, radius: float):
         self.collider = Collider(x, y, radius)
         self.vel = Vec2(0, 0)
-        self.state = ZState.HIDE_WANDER
+        self.state = ZState.WANDER
         self._wander_target = Vec2(random.uniform(-1,1), random.uniform(-1,1))
         self._wander_target.scale_to_length(1.0)
         self._attack_group: Optional[AttackGroup] = None
         self._group_lock_timer = 0.0
+        self.tagged = False
+        self.separation_on = False
+        self.alignment_on= False
+        self.cohesion_on = False
+        self.obstacle_avoidance_on = False
+        self.wander_on = True
+        self.pursue_on = False
+        self.seek_on = False
+        self.hide_on = False
+
 
     def color(self):
-        if self.state == ZState.ATTACK:
+        if self.state == ZState.PURSUE:
             return COLOR_ZOMBIE_ATTACK
         if self._group_lock_timer > 0:
             return COLOR_ZOMBIE_GROUPING
         return COLOR_ZOMBIE_IDLE
+
+    def tag(self):
+        self.tagged = True
+    
+    def untag(self):
+        self.tagged = False
 
     def _steer(self, desired: Vec2) -> Vec2:
         force = desired - self.vel
@@ -68,11 +86,11 @@ class Zombie:
             if hits[2] or hits[3]:
                 self.vel.y *= -0.7
 
-    def _nearby_zombie_colliders(self, all_entities: List) -> List[Collider]:
+    def _zombie_neighbours(self, all_entities: List) -> List[Zombie]:
         cols = []
         for e in all_entities:
             if isinstance(e, Zombie) and e is not self:
-                cols.append(e.collider)
+                cols.append(e)
         return cols
 
     def _obstacle_colliders(self, all_entities: List) -> List[Collider]:
@@ -83,123 +101,146 @@ class Zombie:
                     cols.append(e.collider)
         return cols
 
-    def _hide_from(self, player_pos: Vec2, obstacles: List[Collider]) -> Vec2:
-        # pick the obstacle that gives best cover (most opposite to player and closest)
-        best_spot = None
-        best_score = 1e9
-        desired = Vec2()
-        for o in obstacles:
-            away = (o.pos - player_pos)
-            if away.length_squared() == 0:
-                continue
-            away = away.normalize()
-            # spot just behind obstacle relative to player
-            spot = o.pos + away * (o.radius + self.collider.radius + 10.0)
-            # cost: distance to spot
-            cost = self.collider.pos.distance_to(spot)
-            if cost < best_score:
-                best_score = cost
-                best_spot = spot
-        if best_spot is not None:
-            desired = seek(self.collider.pos, best_spot, ZOMBIE_MAX_SPEED)
-        return desired
+    def tag_neighbours(self, entities: List['Zombie'], radius: float):
+        for entity in entities:
+            entity.untag()
+            to = entity.collider.pos - self.collider.pos
+            range = radius + entity.collider.radius
+            if entity is not self and to.length_squared() < range * range:
+                entity.tag()
+        
+    def update(self, dt: float, player: Player, allEntities: List):
+        player_pos = player.collider.pos
 
-    def _try_form_group(self, all_entities: List["Zombie"], player_pos=None):
-        # dynamiczny próg zależny od odległości gracza
-        if player_pos is None:
-            return None
+        neighbours = self._zombie_neighbours(allEntities)
 
-        dist = self.collider.pos.distance_to(player_pos)
-
-        # mapujemy dystans -> wymagany rozmiar grupy
-        # blisko = mała grupa; daleko = duża grupa
-        # min=2, max=ZOMBIE_GROUP_MIN * 2 (np. 16)
-        min_group = 1
-        max_group = ZOMBIE_GROUP_MIN * 2  
-        max_dist = 800.0  # przy >800 traktujemy jak max dystans
-
-        t = min(dist / max_dist, 1.0)  # 0 blisko, 1 daleko
-
-        required = int(min_group + (max_group - min_group) * t)
-        required = max(min_group, min(required, max_group))
-
-        # sprawdzamy sąsiadów w pobliżu
-        nearby: List[Zombie] = []
-        for e in all_entities:
-            if isinstance(e, Zombie) and e is not self and e.state == ZState.HIDE_WANDER:
-                if self.collider.pos.distance_to(e.collider.pos) <= ZOMBIE_GROUP_RADIUS:
-                    nearby.append(e)
-
-        # czy przekraczamy dynamiczny próg?
-        if len(nearby) + 1 >= required:
-            group = AttackGroup(Zombie._next_group_id, [self] + nearby, self.collider.pos.copy())
-            Zombie._next_group_id += 1
-
-            for m in group.members:
-                m.state = ZState.ATTACK
-                m._attack_group = group
-                m._group_lock_timer = ZOMBIE_GROUP_LOCK_TIME
-            return group
-
-        return None
-
-
-    def update(self, dt: float, playerCollider: Collider, allEntities: List):
-        player_pos = playerCollider.pos
-
-        # decay lock timer
-        if self._group_lock_timer > 0:
-            self._group_lock_timer = max(0.0, self._group_lock_timer - dt)
+        if self.separation_on or self.alignment_on or self.cohesion_on:
+            self.tag_neighbours(neighbours, ZOMBIE_GROUP_RADIUS)
 
         obstacles = self._obstacle_colliders(allEntities)
-        others = self._nearby_zombie_colliders(allEntities)
-
         force = Vec2()
-
-        if self.state == ZState.HIDE_WANDER:
-            hide_force = self._hide_from(player_pos, obstacles) * ZOMBIE_HIDE_WEIGHT
-            # wander
+        speed = self.vel.length()
+        
+        if self.separation_on:
+            separation_force = separation(self, neighbours)
+            force += separation_force * ZOMBIE_SEPARATION_WEIGHT
+        if self.alignment_on:
+            alignment_force = alignment(self, neighbours)
+            force += alignment_force
+        if self.cohesion_on:
+            cohsesion_force = cohesion(self, ZOMBIE_MAX_SPEED, neighbours)
+            force += cohsesion_force
+        if self.obstacle_avoidance_on:
+            obs_force = obstacle_avoidance(self.collider, self.vel, speed, ZOMBIE_MAX_SPEED, obstacles)
+            force += obs_force * ZOMBIE_OBS_AVOID_WEIGHT
+        if self.wander_on:
             forward = self.vel if self.vel.length_squared() > 0 else Vec2(1, 0)
             wander_target, self._wander_target = wander(forward, self._wander_target)
             wander_force = wander_target * ZOMBIE_WANDER_WEIGHT
-            # separation
-            sep_force = separation(self.collider, others) * ZOMBIE_SEPARATION_WEIGHT
-            # avoids
-            obs_force = obstacle_avoidance(self.collider, self.vel, obstacles) * ZOMBIE_OBS_AVOID_WEIGHT
-            wall_force = wall_avoidance(self.collider, self.vel) * ZOMBIE_WALL_AVOID_WEIGHT
+            force += wander_force
+        if self.pursue_on:
+            player_heading = Vec2(0,0)
+            heading = Vec2(0,0)
+            if player.vel.length() > 0.0:
+                player_heading = player.vel.normalize()
+            if self.vel.length() > 0.0:
+                heading = self.vel.normalize()
+            pursue_force = pursuit(self.collider.pos, heading, player_pos, player_heading, player.vel, player.vel.length(), ZOMBIE_MAX_SPEED, self.vel)
+            force += pursue_force
+        if self.seek_on:
+            seek_force = seek(self.collider.pos, player_pos, ZOMBIE_MAX_SPEED, self.vel)
+            force += seek_force
+        if self.hide_on:
+            force += hide(
+                position = self.collider.pos,
+                max_speed = ZOMBIE_MAX_SPEED,
+                velocity = self.vel,
+                target_pos = player_pos,     # the shooter / laser origin
+                target_vel = Vec2(0, 0),     # player not moving fast enough to matter
+                obstacles = obstacles
+            )
 
-            force = hide_force + wander_force + sep_force + obs_force + wall_force
-            force = self._steer(self.vel + force)
-         
-            # Szansa zależna od prędkości i trochę od chaosu AI (losowość)
-            peek_chance = 0.80 + (self.vel.length() / ZOMBIE_MAX_SPEED) * 0.05  # baza 3%, rośnie gdy zombie już się rusza
-
-            if random.random() < peek_chance:
-                # czasem zmniejszamy motywację do chowania
-                    force -= hide_force * random.uniform(0.4, 0.8)
-
-                # czasem wręcz ignorujemy hide — agresywna ciekawość
-            if random.random() < 0.3:  # 30% z peeków
-                    force += (wander_target * 1.2)  # mocniej naprzód
-
-            # attempt forming group (but don't recruit while a different group nearby is attacking)
-            self._try_form_group(allEntities, player_pos)   
-
-        elif self.state == ZState.ATTACK:
-            # Seek the player, but still avoid obstacles/walls
-            seek_force = seek(self.collider.pos, player_pos, ZOMBIE_MAX_SPEED) * ZOMBIE_SEEK_WEIGHT
-            obs_force = obstacle_avoidance(self.collider, self.vel, obstacles) * ZOMBIE_OBS_AVOID_WEIGHT
-            wall_force = wall_avoidance(self.collider, self.vel) * ZOMBIE_WALL_AVOID_WEIGHT
-            sep_force = separation(self.collider, others) * (ZOMBIE_SEPARATION_WEIGHT * 0.5)  # keep spacing a bit
-
-            force = seek_force + obs_force + wall_force + sep_force
-            force = self._steer(force)
-
-            # IMPORTANT: prevent chain reaction — do not recruit new members after lock expires.
-            # We simply never call _try_form_group() in ATTACK.
-            # Moreover, while lock timer > 0 we ignore new nearby wanderers (no-op here).
+        wall_force = wall_avoidance(self.collider, self.vel) * ZOMBIE_WALL_AVOID_WEIGHT
+        force += wall_force
 
         self._apply_force(force, dt)
 
+
+    def update_behavior(self, player: Player):
+        # Distance to player
+        dist_sq = (player.collider.pos - self.collider.pos).length_squared()
+
+        # Beam direction
+        beam_dir = Vec2(math.cos(player.angle_deg), math.sin(player.angle_deg)).normalize()
+
+        # Behavior switching thresholds
+        trigger_dist = 200       # zombie detects player
+        lose_dist = 260          # zombie goes back to wandering
+
+        # --- State Machine ---
+
+        if self.state == ZState.WANDER:
+            if dist_sq < trigger_dist * trigger_dist:
+                self.become_pursuer()
+
+        elif self.state == ZState.PURSUE:
+            if self.laser_threatened(self.collider.pos, player.collider.pos, beam_dir, ZOMBIE_THREAT_RADIUS):
+                self.become_hider()
+            if dist_sq > lose_dist * lose_dist:
+                self.become_wanderer()
+ 
+        elif self.state == ZState.HIDE:
+            if not self.laser_threatened(self.collider.pos, player.collider.pos, beam_dir, ZOMBIE_THREAT_RADIUS):
+                self.become_pursuer()
+
+    def become_pursuer(self):
+        self.state = ZState.PURSUE
+
+        # Turn OFF unrelated behaviors
+        self.wander_on = False
+        self.separation_on = False
+        self.alignment_on = False
+        self.cohesion_on = False
+        self.hide_on = False
+
+        # Turn ON pursuit
+        self.pursue_on = True
+
+        print("Zombie now pursuing!")
+
+    def become_wanderer(self):
+        self.state = ZState.WANDER
+
+        # Turn OFF pursuit
+        self.pursue_on = False
+
+        # Turn ON wandering
+        self.wander_on = True
+
+        # Turn ON flocking
+        self.separation_on = True
+        self.alignment_on = True
+        self.cohesion_on = True
+
+        print("Zombie now wandering again.")
+
+    def become_hider(self):
+        self.state = ZState.HIDE
+
+        # Turn OFF pursuit
+        self.pursue_on = False
+        
+        # Turn ON separation
+        self.separation_on = True
+
+        # Turn ON hide
+        self.hide_on = True
+
+
+    def laser_threatened(self, zombie_pos: Vec2, beam_start: Vec2, beam_dir: Vec2, threat_radius: float) -> bool:
+        to_zombie = zombie_pos - beam_start
+        perpendicular = abs(to_zombie.cross(beam_dir))
+        return perpendicular < threat_radius
+    
     def draw(self, surface: pygame.Surface):
         pygame.draw.circle(surface, self.color(), self.collider.pos, int(self.collider.radius))

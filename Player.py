@@ -2,19 +2,22 @@
 import pygame
 import math
 from Collider import Collider
-from Settings import (
-    PLAYER_START_POS_X, PLAYER_START_POS_Y, PLAYER_RADIUS, PLAYER_SPEED,
-    COLOR_PLAYER, COLOR_PLAYER_BEAM, PLAYER_BEAM_COOLDOWN, PLAYER_BEAM_THICKNESS,
-    WIDTH, HEIGHT
-)
+import math
+from Settings import COLOR_PLAYER_BEAM, HEIGHT, PLAYER_BEAM_COOLDOWN, PLAYER_BEAM_THICKNESS, PLAYER_START_POS_X, PLAYER_START_POS_Y, PLAYER_RADIUS, PLAYER_SPEED, COLOR_PLAYER, WIDTH
+
+Vec2 = pygame.math.Vector2
 
 class Player:
     def __init__(self):
+        self.collider=Collider(PLAYER_START_POS_X, PLAYER_START_POS_Y, PLAYER_RADIUS)
+        self.angle = -90
+    
         self.collider = Collider(PLAYER_START_POS_X, PLAYER_START_POS_Y, PLAYER_RADIUS)
         self.angle_deg = -90.0
         self._beam_timer = 0.0
         self.is_firing = False
         self.last_shot_segment = None  # (start, end) for this frame
+        self.vel = Vec2()
 
     def update(self, dt: float):
         self.rotate_towards(pygame.mouse.get_pos())
@@ -40,6 +43,8 @@ class Player:
         if direction.length_squared() > 0:
             direction = direction.normalize()
         self.collider.pos += direction * PLAYER_SPEED * dt
+        self.vel = direction * PLAYER_SPEED
+        self.collider.pos += self.vel * dt
         self.collider.keepInsideScreen()
 
     def _compute_beam_segment(self):
