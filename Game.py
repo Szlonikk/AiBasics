@@ -1,4 +1,3 @@
-
 import pygame
 import random
 from Obstacles import Obstacles
@@ -30,7 +29,7 @@ class Game:
     def _spawn_zombies(self, count: int):
         zombies = []
         tries = 0
-        while len(zombies) < count and tries < count * 50:
+        while len(zombies) < count and tries < count * 80:
             tries += 1
             x = random.randint(60, WIDTH - 60)
             y = random.randint(60, HEIGHT - 60)
@@ -64,7 +63,8 @@ class Game:
         for obj in self.gameObjects:
             if hasattr(obj, "update"):
                 if isinstance(obj, Zombie):
-                    obj.update_behavior(self.player)
+                    # ZMIANA: przekazujemy też self.gameObjects
+                    obj.update_behavior(self.player, self.gameObjects)
                     obj.update(dt, self.player, self.gameObjects)
                 else:
                     obj.update(dt)
@@ -104,7 +104,6 @@ class Game:
                     self.zombies.remove(hit_obj)
                     self.gameObjects.remove(hit_obj)
 
-
         # Resolve interpenetrations (basic)
         self.resolveAllCollisions(self.gameObjects)
 
@@ -132,7 +131,11 @@ class Game:
 
     def _draw_ui(self):
         font = pygame.font.SysFont(None, 22)
-        text = font.render(f"HP: {self.player_hp}   Zombies: {len(self.zombies)}   LMB: beam", True, (230,230,230))
+        text = font.render(
+            f"HP: {self.player_hp}   Zombies: {len(self.zombies)}   LMB: beam",
+            True,
+            (230, 230, 230)
+        )
         self.screen.blit(text, (10, 10))
 
     def resolveAllCollisions(self, gameObjects):
@@ -152,7 +155,7 @@ class Game:
                     else:
                         c1.resolveOverlap(c2, static=False)
 
-        # keep inside bounds
-        for obj in gameObjects:
-            if hasattr(obj, "collider") and obj.__class__.__name__ != "Obstacles":
-                obj.collider.keepInsideScreen()
+        # # keep inside bounds
+        # for obj in gameObjects:
+        #     if hasattr(obj, "collider") and obj.__class__.__name__ != "Obstacles":
+        #         obj.collider.keepInsideScreen()
