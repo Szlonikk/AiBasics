@@ -280,7 +280,7 @@ class Zombie:
         - wszystkie zombie z grupy przechodzą do stanu PURSUE.
         """
         if self._attack_group is not None:
-            return  # już w grupie
+            return False # już w grupie
 
         neighbours = self._nearby_free_zombies_for_group(allEntities)
 
@@ -288,7 +288,7 @@ class Zombie:
 
         # czy mamy wystarczającą liczbę zombie do grupy?
         if len(neighbours) + 1 < required_size:
-            return
+            return False
 
         # członkowie grupy: my + sąsiedzi (bierzemy tylko tyle, ile trzeba)
         members: List[Zombie] = [self] + neighbours[: required_size - 1]
@@ -314,6 +314,7 @@ class Zombie:
             z._attack_group = group
             z._group_lock_timer = ZOMBIE_GROUP_LOCK_TIME
             z.become_pursuer()   # od razu przechodzą do ataku
+        return True
 
     # ---------- ZMIENIONA MASZYNA STANÓW ----------
 
@@ -343,7 +344,15 @@ class Zombie:
         # Gracz musi być w zasięgu "wykrycia", żeby w ogóle próbować tworzyć grupę
         if dist_sq < trigger_dist * trigger_dist:
             # Spróbuj utworzyć grupę (wymagana liczebność zależy od dystansu do gracza)
-            self._try_form_attack_group(player, allEntities)
+            did_form_group = self._try_form_attack_group(player, allEntities)
+
+            # Jezeli nie udało się utworzyć grupy, sprawdź czy liczba zombie na mapie
+            # jest mniejsza niż ZOMBIE_GROUP_MIN * 3, jeśli tak to nie twórz grupy i
+            # przejdź do stanu PURSUE
+            if not did_form_group:
+                zombie_count = sum(1 for ent in allEntities if isinstance(ent, Zombie))
+                if zombie_count < ZOMBIE_GROUP_MIN * 3:
+                    self.become_pursuer()
 
         # Jeśli grupa się nie utworzyła – zostajemy w dotychczasowym stanie
         # (najczęściej WANDER + flocking)
