@@ -7,7 +7,6 @@ from Settings import (
     ZOMBIE_RADIUS, ZOMBIE_COUNT, COLOR_BG
 )
 from Zombie import Zombie
-from Steering import line_intersects_circle, ray_circle_hit_point
 
 class Game:
     def __init__(self):
@@ -63,7 +62,6 @@ class Game:
         for obj in self.gameObjects:
             if hasattr(obj, "update"):
                 if isinstance(obj, Zombie):
-                    # ZMIANA: przekazujemy też self.gameObjects
                     obj.update_behavior(self.player, self.gameObjects)
                     obj.update(dt, self.player, self.gameObjects)
                 else:
@@ -155,7 +153,33 @@ class Game:
                     else:
                         c1.resolveOverlap(c2, static=False)
 
-        # # keep inside bounds
-        # for obj in gameObjects:
-        #     if hasattr(obj, "collider") and obj.__class__.__name__ != "Obstacles":
-        #         obj.collider.keepInsideScreen()
+def ray_circle_hit_point(ray_start, ray_end, circle_center, radius):
+    # Ray parametric form: P = A + t*(B-A)
+    # Solve intersection with circle
+    d = ray_end - ray_start
+    f = ray_start - circle_center
+
+    a = d.dot(d)
+    b = 2 * f.dot(d)
+    c = f.dot(f) - radius*radius
+
+    disc = b*b - 4*a*c
+    if disc < 0:
+        return None  # no hit
+
+    disc = disc**0.5
+    t1 = (-b - disc) / (2*a)
+    t2 = (-b + disc) / (2*a)
+
+    # We want the first hit along the ray in [0,1]
+    ts = []
+    if 0 <= t1 <= 1:
+        ts.append(t1)
+    if 0 <= t2 <= 1:
+        ts.append(t2)
+
+    if not ts:
+        return None
+
+    t = min(ts)
+    return ray_start + d * t

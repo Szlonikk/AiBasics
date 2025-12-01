@@ -10,7 +10,6 @@ from Settings import (
     ZOMBIE_WANDER_CIRCLE_DISTANCE,
     ZOMBIE_WANDER_CIRCLE_RADIUS,
     ZOMBIE_WANDER_JITTER,
-    ZOMBIE_SEPARATION_RADIUS,
     ZOMBIE_PANIC_DISTANCE,
     ZOMBIE_DECELERATION_TWEAKER,
     ZOMBIE_FACING_ANGLE,
@@ -26,96 +25,97 @@ class Deceleration(Enum):
     normal = 2
     fast = 3
 
-def truncate(v: Vec2, max_value: float) -> Vec2:
-    if v.length_squared() > max_value * max_value:
-        return v.normalize() * max_value
-    return v
+#-----------------BEHAVIOUR-------------------
 
+# SEEK - returns a force that directs an agent toward a target position
 def seek(position: Vec2, target: Vec2, max_speed: float, velocity: float) -> Vec2:
     desired = (target - position).normalize() * max_speed
     return desired - velocity
 
+# FLEE - creates a force that steers the agent away
 def flee(position: Vec2, target: Vec2, max_speed: float, velocity: float) -> Vec2:
+    # only flee if the target is within 'panic distance'. Work in distance squared space.
     panicDistanceSq = ZOMBIE_PANIC_DISTANCE * ZOMBIE_PANIC_DISTANCE
+
     desired = position - target
     if desired.length_squared() > panicDistanceSq:
         return Vec2(0, 0)
     desired = desired.normalize() * max_speed
     return desired - velocity
 
+# ARRIVE - steers the agent in such a way it decelerates onto the target position
 def arrive(position: Vec2, target: Vec2, max_speed: float, velocity: float, deceleration: Deceleration):
     toTarget = target - position
+    # calculate the distance to the target position
     dist = target.length()
     if dist > 0.0:
+        # because Deceleration is enumerated as an int, this value is required 
+        # to provide fine tweaking of the deceleration.
         decelerationTweaker = ZOMBIE_DECELERATION_TWEAKER
+        # calculate the speed required to reach the target given the desired 
+        # deceleration - make sure the velocity does not exceed the max
         speed = min(dist / (deceleration.value * decelerationTweaker), max_speed)
+        # from here proceed just like Seek except we don't need to normalize 
+        # the ToTarget vector because we have already gone to the trouble
+        # of calculating its length: dist.
         desired = toTarget * speed / dist
         return desired - velocity
     return Vec2(0, 0)
 
+# PURSUIT - predicts where evader is going to be in the future and runs toward that offset, making adjustments as it narrows the gap 
 def pursuit(position: Vec2, heading: Vec2, evader: Vec2, evaderHeading: Vec2, evaderVelocity: Vec2, evaderSpeed: float, max_speed: float, velocity: float):
+    # if the evader is ahead and facing the agent then we can just seek 
+    # for the evader's current position.
     toEvader = evader - position
     relativeHeading = heading.dot(evaderHeading)
     if toEvader.dot(heading) > 0 and relativeHeading > -math.cos(ZOMBIE_FACING_ANGLE):
         return seek(position, evader, max_speed, velocity)
     
-    lookAheadTime = toEvader.length() / (max_speed + evaderSpeed)
-    return seek(position, evader + evaderVelocity * lookAheadTime, max_speed, velocity)
+    # Not considered ahead so we predict where the evader will be.
     
+    # the look-ahead time is proportional to the distance between the evader 
+    # and the pursuer; and is inversely proportional to the sum of the
+    # agents' velocities
+    lookAheadTime = toEvader.length() / (max_speed + evaderSpeed)
+    # now seek to the predicted future position of the evader
+    return seek(position, evader + evaderVelocity * lookAheadTime, max_speed, velocity)
+
+# EVADE - flees from the estimated future position
 def evade(pursuer_pos: Vec2, pursuer_vel: Vec2, position: Vec2, max_speed: float, velocity: Vec2) -> Vec2:
+    # the look-ahead time is proportional to the distance between the pursuer
+    # and the evader; and is inversely proportional to the sum of the
+    # agents' velocities
     to_pursuer = pursuer_pos - position
     pursuer_speed = pursuer_vel.length()
     look_ahead_time = to_pursuer.length() / (max_speed + pursuer_speed)
+    # now flee away from predicted future position of the pursuer
     return flee(position, pursuer_pos + pursuer_vel * look_ahead_time, max_speed, velocity) 
 
-def separation(me, neighbours: List) -> Vec2:
-    force = Vec2()
-    for n in neighbours:
-        if n is not me and n.tagged: 
-            to_me = me.collider.pos - n.collider.pos
-            force += to_me.normalize() / to_me.length()
-    return force
-
-def alignment(me, neighbours: List) -> Vec2:
-    average_heading = Vec2()
-    neighbour_count = 0.0
-    for n in neighbours:
-        if n is not me and n.tagged:
-            average_heading += n.vel.normalize()
-            neighbour_count += 1.0
-    if neighbour_count > 0.0:
-        average_heading /= neighbour_count
-        average_heading -= me.vel.normalize()
-    return average_heading
-
-def cohesion(me, max_speed: float, neighbours: List) -> Vec2:
-    center_of_mass = Vec2()
-    force = Vec2()
-    neighbour_count = 0.0
-    for n in neighbours:
-        if n is not me and n.tagged:
-            center_of_mass  += n.collider.pos
-            neighbour_count += 1
-    if neighbour_count > 0.0:
-        center_of_mass /= neighbour_count
-        force = seek(me.collider.pos, center_of_mass, max_speed, me.vel)
-    return force
-
-def wander(heading: Vec2, wander_target: Vec2) -> Tuple[Vec2, Vec2]: #TODO
-    # Buckland-style wander target jitter on a circle projected ahead
+# WANDER - gives the impression of a random walk through the agent’s environment
+def wander(heading: Vec2, wander_target: Vec2) -> Tuple[Vec2, Vec2]:
+    # first, add a small random vector to the target’s position (RandomClamped
+    # returns a value between -1 and 1)
     jitter = ZOMBIE_WANDER_JITTER
     wander_target += Vec2(random.uniform(-1, 1) * jitter, random.uniform(-1, 1) * jitter)
+    # reproject this new vector back onto a unit circle and
+    # increase the length of the vector to the same as the radius
+    # of the wander circle
     wander_target = wander_target.normalize() * ZOMBIE_WANDER_CIRCLE_RADIUS
+    # project the target into world space
     circle_center = heading.normalize() * ZOMBIE_WANDER_CIRCLE_DISTANCE
     target_world = circle_center + wander_target
     return target_world, wander_target
 
+# OBSTACLE_AVOIDANCE - steers a vehicle to avoid obstacles lying in its path
 def obstacle_avoidance(me: Collider, velocity: Vec2, speed: float, max_speed: float, obstacles: List[Collider], look_ahead: float = 80.0) -> Vec2:
+    # the detection box length is proportional to the agent's velocity
     boxLength = look_ahead + (speed / max_speed) * look_ahead
-    closest_dist = math.inf
+    # this will keep track of the closest intersecting obstacle (CIB)
     closest = None
+    # this will be used to track the distance to the CIB
+    closest_dist = math.inf
 
-    # tag all obstacles
+    # tag all obstacles within range of the box for processing
     for ob in obstacles:
             ob.tagged = False   # clear any previous tag
 
@@ -125,36 +125,59 @@ def obstacle_avoidance(me: Collider, velocity: Vec2, speed: float, max_speed: fl
             if dist_sq < ZOMBIE_RADIUS * ZOMBIE_RADIUS:
                 ob.tagged = True
 
-
+    # variables needed to calculate obstacle's position in local space
     heading = Vec2(0, 0)
     if velocity.length() > 0.0:
         heading = velocity.normalize()
     side = (heading.y * -1, heading.x)
 
     for o in obstacles:
+        # if the obstacle has been tagged within range proceed
         if o.tagged:
+            # calculate this obstacle's position in local space
             localPos = point_to_local_space(o.pos, heading, side, me.pos)
+            # if the local position has a negative x value then it must lay
+            # behind the agent. (in which case it can be ignored)
             if localPos >= 0:
+                #if the distance from the x axis to the object's position is less
+                # than its radius + half the width of the detection box then there
+                # is a potential intersection.
                 expandedRadius = o.radius + ZOMBIE_RADIUS
                 if abs(localPos.y) < expandedRadius:
+                    # now to do a line/circle intersection test. The center of the
+                    # circle is represented by (cX, cY). The intersection points are
+                    # given by the formula x = cX +/-sqrt(r^2-cY^2) for y=0.
+                    # We only need to look at the smallest positive value of x because
+                    # that will be the closest point of intersection.
                     cX = localPos.x
                     cY = localPos.y
+                    # we only need to calculate the sqrt part of the above equation once
                     sqrtPart = math.sqrt(expandedRadius * expandedRadius - cY * cY)
                     ip = cX - sqrtPart
                     if ip <= 0:
                         ip = cX + sqrtPart
+                    # test to see if this is the closest so far. If it is, keep a
+                    # record of the obstacle and its local coordinates
                     if ip < closest_dist:
                         closest_dist = ip
                         closest = o
+    # if we have found an intersecting obstacle, calculate a steering
+    # force away from it
     if closest:
         steeringForce = Vec2()
+        # the closer the agent is to an object, the stronger the steering force 
+        # should be
         multiplier = 1.0 + (boxLength - closest.pos.x) / boxLength
+        # calculate the lateral force
         steeringForce.y = (closest.radius - closest.pos.y) * multiplier
+        # apply a braking force proportional to the obstacle’s distance from 
+        # the vehicle.
         steeringForce.x = (closest.radius - closest.pos.x) * ZOMBIE_BREAKING_WEIGHT
-        # steer away proportional to proximity
+        # finally, convert the steering vector from local to world space
         return vector_to_world_space(steeringForce, heading, side)
     return Vec2(0, 0)
 
+# WALL_AVOIDANCE - avoid potential collisions with a wall
 def wall_avoidance(me: Collider, velocity: Vec2) -> Vec2:
     # Predict next position and push back from walls (acts like "bounce" intent)
     nudge = Vec2()
@@ -165,65 +188,96 @@ def wall_avoidance(me: Collider, velocity: Vec2) -> Vec2:
     if future.y + me.radius > HEIGHT: nudge.y -= 1
     return nudge * velocity.length()
 
-
-def get_hiding_position(pos_ob: Vec2, radius_ob: float, target_pos: Vec2) -> Vec2:
-    dist_away = radius_ob + ZOMBIE_DISTANCE_FROM_BOUNDARY
-    to_ob = (pos_ob - target_pos).normalize()
-    return (to_ob * dist_away) + pos_ob
-
+# HIDE - sneak up on a player
 def hide(position: Vec2, max_speed: float, velocity: Vec2, target_pos: Vec2, target_vel: Vec2, obstacles: List[Collider]):
     dist_to_closest = math.inf
     best_hiding_spot = Vec2()
     for o in obstacles:
+        # calculate the position of the hiding spot for this obstacle
         hiding_spot = get_hiding_position(o.pos, o.radius, target_pos)
+        # work in distance-squared space to find the closest hiding
+        # spot to the agent
         dist = (hiding_spot - position).length_squared()
         if dist < dist_to_closest:
             dist_to_closest = dist
             best_hiding_spot = hiding_spot
+    # if no suitable obstacles found then evade the target
     if dist_to_closest == math.inf:
         return evade(target_pos, target_vel, position, max_speed, velocity)
+    # else use Arrive on the hiding spot
     return arrive(position, best_hiding_spot, max_speed, velocity, Deceleration.fast)
 
-def line_intersects_circle(a: Vec2, b: Vec2, circle_center: Vec2, circle_radius: float) -> bool:
-    ab = b - a
-    ac = circle_center - a
-    t = 0.0
-    denom = ab.length_squared()
-    if denom > 0:
-        t = max(0.0, min(1.0, ac.dot(ab) / denom))
-    closest = a + ab * t
-    return closest.distance_to(circle_center) <= circle_radius
+#---------------GROUP BEHAVIOURS------------------
 
-def ray_circle_hit_point(ray_start, ray_end, circle_center, radius):
-    # Ray parametric form: P = A + t*(B-A)
-    # Solve intersection with circle
-    d = ray_end - ray_start
-    f = ray_start - circle_center
+# SEPARATION - creates a force that steers a vehicle away from those in its neighborhood region
+def separation(me, neighbours: List) -> Vec2:
+    force = Vec2()
+    for n in neighbours:
+        # make sure this agent isn't included in the calculations and that
+        # the agent being examined is close enough.
+        if n is not me and n.tagged: 
+            to_me = me.collider.pos - n.collider.pos
+            # scale the force inversely proportional to the agent's distance
+            # from its neighbor.
+            force += to_me.normalize() / to_me.length()
+    return force
 
-    a = d.dot(d)
-    b = 2 * f.dot(d)
-    c = f.dot(f) - radius*radius
+# ALIGNMENT - attempts to keep a vehicle’s heading aligned with its neighbors
+def alignment(me, neighbours: List) -> Vec2:
+    # used to record the average heading of the neighbors
+    average_heading = Vec2()
+    # used to count the number of vehicles in the neighborhood
+    neighbour_count = 0.0
+    # iterate through all the tagged vehicles and sum their heading vectors
+    for n in neighbours:
+        # make sure *this* agent isn't included in the calculations and that
+        # the agent being examined is close enough
+        if n is not me and n.tagged:
+            average_heading += n.vel.normalize()
+            neighbour_count += 1.0
+    # if the neighborhood contained one or more vehicles, average their
+    # heading vectors.
+    if neighbour_count > 0.0:
+        average_heading /= neighbour_count
+        average_heading -= me.vel.normalize()
+    return average_heading
 
-    disc = b*b - 4*a*c
-    if disc < 0:
-        return None  # no hit
+# COHESION - produces a steering force that moves a vehicle toward the center of mass of its neighbors
+def cohesion(me, max_speed: float, neighbours: List) -> Vec2:
+    # first find the center of mass of all the agents
+    center_of_mass = Vec2()
+    force = Vec2()
+    neighbour_count = 0.0
+    # iterate through the neighbors and sum up all the position vectors
+    for n in neighbours:
+        # make sure *this* agent isn't included in the calculations and that
+        # the agent being examined is a neighbor
+        if n is not me and n.tagged:
+            center_of_mass  += n.collider.pos
+            neighbour_count += 1
+    if neighbour_count > 0.0:
+        # the center of mass is the average of the sum of positions
+        center_of_mass /= neighbour_count
+        # now seek toward that position
+        force = seek(me.collider.pos, center_of_mass, max_speed, me.vel)
+    return force
 
-    disc = disc**0.5
-    t1 = (-b - disc) / (2*a)
-    t2 = (-b + disc) / (2*a)
+#--------------HELPER FUNCTIONS---------------
 
-    # We want the first hit along the ray in [0,1]
-    ts = []
-    if 0 <= t1 <= 1:
-        ts.append(t1)
-    if 0 <= t2 <= 1:
-        ts.append(t2)
+def truncate(v: Vec2, max_value: float) -> Vec2:
+    if v.length_squared() > max_value * max_value:
+        return v.normalize() * max_value
+    return v
 
-    if not ts:
-        return None
-
-    t = min(ts)
-    return ray_start + d * t
+def get_hiding_position(pos_ob: Vec2, radius_ob: float, target_pos: Vec2) -> Vec2:
+    # calculate how far away the agent is to be from the chosen obstacle’s 
+    # bounding radius
+    dist_away = radius_ob + ZOMBIE_DISTANCE_FROM_BOUNDARY
+    # calculate the heading toward the object from the target
+    to_ob = (pos_ob - target_pos).normalize()
+    # scale it to size and add to the obstacle's position to get
+    # the hiding spot.
+    return (to_ob * dist_away) + pos_ob
 
 def point_to_local_space(point, heading, side, position):
     """
