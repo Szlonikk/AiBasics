@@ -63,6 +63,8 @@ class Zombie:
         self.seek_on = False
         self.hide_on = False
 
+        self._state_timer = 0.0
+
     def color(self):
         if self.state == ZState.PURSUE:
             return COLOR_ZOMBIE_ATTACK
@@ -204,6 +206,40 @@ class Zombie:
         if self.state == ZState.WANDER:
             center_seek = seek(self.collider.pos, player_pos, ZOMBIE_MAX_SPEED, self.vel)
             force += center_seek * 0.08   # jak za słabe/mocne, kręcisz tą wartością
+# --- HIDE: aktywne ukrywanie ZA PRZESZKODĄ ---
+        if self.state == ZState.HIDE:
+
+            best_ob = None
+            best_dist = 999999
+
+            # znajdź przeszkodę w "linii wzroku"
+            for ob in obstacles:
+                to_ob = ob.pos - player_pos
+                to_z  = self.collider.pos - player_pos
+
+                # obiekt musi być mniej więcej pomiędzy graczem a zombie
+                if to_ob.length() < to_z.length() + 50:
+                    d = (ob.pos - self.collider.pos).length()
+                    if d < best_dist:
+                        best_dist = d
+                        best_ob = ob
+
+            if best_ob:
+                # kierunek od przeszkody w stronę odwrotną do gracza
+                away = (best_ob.pos - player_pos).normalize()
+
+                # punkt ukrycia ZA przeszkodą
+                hide_point = best_ob.pos + away * (best_ob.radius + 20)
+
+                hide_force = seek(self.collider.pos, hide_point, ZOMBIE_MAX_SPEED, self.vel)
+                force += hide_force * ZOMBIE_HIDE_WEIGHT
+
+            else:
+                # brak przeszkód → uciekaj od gracza
+                flee_dir = (self.collider.pos - player_pos).normalize()
+                flee_target = self.collider.pos + flee_dir * 100
+                flee_force = seek(self.collider.pos, flee_target, ZOMBIE_MAX_SPEED, self.vel)
+                force += flee_force * (ZOMBIE_HIDE_WEIGHT * 0.6)
 
         # --- UNIKANIE ŚCIAN: słabsze w pościgu ---
         wall_weight = ZOMBIE_WALL_AVOID_WEIGHT * (0.3 if self.state == ZState.PURSUE else 1.0)
@@ -318,7 +354,7 @@ class Zombie:
 
     # ---------- ZMIENIONA MASZYNA STANÓW ----------
 
-    def update_behavior(self, player: Player, allEntities: List):
+    def update_behavior(self, player: Player, allEntities: List, dt):
         # odległość do gracza
         dist_sq = (player.collider.pos - self.collider.pos).length_squared()
 
@@ -356,6 +392,13 @@ class Zombie:
 
         # Jeśli grupa się nie utworzyła – zostajemy w dotychczasowym stanie
         # (najczęściej WANDER + flocking)
+        self._state_timer += dt  # zakładam że dt masz w player; jeśli nie, podaj dt
+        if self._state_timer >= 3.0:
+            self._state_timer = 0.0
+            if self.state == ZState.WANDER:
+                self.become_hider()
+            elif self.state == ZState.HIDE:
+                self.become_wanderer()
 
     # ---------- STANY POMOCNICZE ----------
 
@@ -386,9 +429,9 @@ class Zombie:
         self.wander_on = True
 
         # Włącz flocking
-        self.separation_on = True
-        self.alignment_on = True
-        self.cohesion_on = True
+        self.separation_on = False
+        self.alignment_on = False
+        self.cohesion_on = False
 
         print("Zombie now wandering again.")
 
@@ -404,6 +447,10 @@ class Zombie:
 
         # Włącz chowanie
         self.hide_on = True
+        self.separation_on = False
+        self.alignment_on = False
+        self.cohesion_on = False
+        print('HIDER')
 
     def laser_threatened(self, zombie_pos: Vec2, beam_start: Vec2, beam_dir: Vec2, threat_radius: float) -> bool:
         to_zombie = zombie_pos - beam_start

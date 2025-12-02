@@ -23,7 +23,7 @@ class Game:
 
         self.gameObjects = [*self.obstacles, self.player, *self.zombies]
 
-        self.player_hp = 3
+        self.player_hp = 300
 
     def _spawn_zombies(self, count: int):
         zombies = []
@@ -62,7 +62,7 @@ class Game:
         for obj in self.gameObjects:
             if hasattr(obj, "update"):
                 if isinstance(obj, Zombie):
-                    obj.update_behavior(self.player, self.gameObjects)
+                    obj.update_behavior(self.player, self.gameObjects, dt)
                     obj.update(dt, self.player, self.gameObjects)
                 else:
                     obj.update(dt)
